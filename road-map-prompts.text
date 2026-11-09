@@ -1,0 +1,110 @@
+Based on your supervisor's audio guidelines, the research focuses on two core steps after gathering code: **(1) identifying "strategic / sensitive bug locations"** (critical lines/branches where a fault directly changes output), and **(2) generating test cases specifically targeting those sensitive points**.
+
+Because you already have ~40 functions and their test files in your workspace, here are the structured, ready-to-run prompts tailored for your candidate LLMs (GPT, LLaMA, DeepSeek, Claude, etc.).
+
+---
+
+### Prompt 1: Phase 1 — Strategic / Sensitive Bug Location Analysis
+
+Use this prompt first to evaluate whether the LLM can identify fault-sensitive locations in a target function.
+
+```text
+You are an expert software testing and mutation analysis assistant.
+
+I am analyzing the following backend method to identify its "strategic/sensitive bug locations"—defined as critical code locations, expressions, or branch decisions where the introduction of a fault/mutation is most likely to directly propagate and alter the program's observable output or state, rather than being masked or absorbed.
+
+Here is the source code:
+---
+[PASTE METHOD / FUNCTION SOURCE CODE HERE]
+---
+
+Task Requirements:
+1. Identify between 2 to 5 "Strategic / Sensitive Bug Locations" in this function.
+2. For each identified location, provide:
+   - Location: Exact line number(s) or statement.
+   - Sensitivity Rationale: Why a bug introduced here directly alters program output/state rather than remaining silent or masked.
+   - Fault Scenario: A concrete example of a likely fault/mutation at this spot (e.g., boundary condition swap, inverted check, dropped calculation, or null-mishandling).
+   - Observable Impact: Exactly how the return value or failure state diverges from specification when this spot is faulted.
+3. Rank the identified locations from Highest Sensitivity to Lowest Sensitivity.
+
+```
+
+---
+
+### Prompt 2: Phase 2 — Targeted Test Generation for Sensitive Locations
+
+Use this prompt to generate test suites that directly target the identified critical points to maximize mutation kill rate and coverage.
+
+```text
+You are an expert automated software testing system.
+
+Below is a backend method along with its identified "strategic/sensitive bug locations" (critical points where a fault directly alters output behavior).
+
+Source Code:
+---
+[PASTE METHOD / FUNCTION SOURCE CODE HERE]
+---
+
+Sensitive Locations Identified:
+---
+[PASTE OUTPUT FROM PROMPT 1, OR LIST THE KEY CRITICAL LINES/CONDITIONS]
+---
+
+Task Requirements:
+Generate a comprehensive, targeted test suite designed specifically to cover and trigger faults at these strategic locations:
+1. For each test case, supply the following metadata:
+   - Test ID (e.g., TEST-SEN-01)
+   - Targeted Sensitive Location (Line / Condition)
+   - Test Category (Normal, Boundary, Invalid Input, or Edge Case)
+   - Exact Inputs
+   - Expected Output / Behavior
+   - Targeted Fault / Kill Objective (which subtle bug at this spot will this test catch?)
+2. Provide executable test code compatible with Vitest / Jest (JavaScript/TypeScript).
+3. Ensure assertions are strict and deterministic, avoiding non-asserted executions.
+
+```
+
+---
+
+### Prompt 3: All-in-One Benchmark Prompt (For Running Across Multiple LLMs)
+
+If you are querying several models (e.g., LLaMA, DeepSeek, GPT) simultaneously to compare their outputs directly in a single pass:
+
+```text
+You are a software engineering researcher specializing in code intelligence and automated testing.
+
+Target Function:
+---
+[PASTE FUNCTION NAME AND CODE HERE]
+---
+
+Instructions:
+Part A: Fault Sensitivity Analysis
+- Analyze the function and identify the top 3 "strategic/sensitive bug locations" where logic errors or mutated statements would immediately propagate to observable program output.
+- Explain the rationale for why each location is sensitive.
+
+Part B: Targeted Test Cases
+- For every sensitive location identified in Part A, generate at least 2 distinct test cases (including boundary and edge cases) specifically crafted to expose bugs at that location.
+- Format each test case as:
+  * Test ID:
+  * Target Location:
+  * Input:
+  * Expected Result:
+  * Detection Goal:
+
+Part C: Runnable Vitest Code
+- Provide a ready-to-run Vitest `describe(...)` block containing all proposed tests.
+
+```
+
+---
+
+### Recommended Immediate Actions:
+
+1. **Select an initial batch of 5 to 10 functions** from your existing repository modules (such as `paginateRecords`, `verifyAccessAuthorization`, `auditTransactionLedger`, `matchHttpRoute`, or `applyPatchOperations`).
+
+
+2. **Run Prompt 1** across your selected models (e.g., GPT, DeepSeek, LLaMA) using the same code snippet to compare whether they agree on which lines are "sensitive".
+
+
+3. **Run Prompt 2** to generate the tests, and save their outputs into your Vitest test suite to see if they expose or catch any bugs.

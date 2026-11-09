@@ -1,0 +1,218 @@
+**AI/model:** C
+prompt :::::: 
+Act as a research and testing assistant for my thesis. Use the attached thesis materials as the source of truth. Do not invent requirements or claim tests were run when they were only proposed.
+
+Create a thesis roadmap and a coordinated testing plan:
+
+1. ROADMAP
+   - Summarize the thesis topic, goals, and scope from the materials.
+   - Break the work into phases, such as requirements, design, implementation, testing, analysis, and writing.
+   - For each phase, list concrete tasks, expected deliverables, dependencies, and completion criteria.
+   - Flag missing information or decisions I need to provide.
+
+2. TEST PLAN
+   - Turn every stated requirement into one or more test cases.
+   - Cover normal cases, boundary cases, invalid inputs, and relevant edge cases.
+   - For the paginateRecords specification, address:
+     * SLS 1: invalid collection and page/page-size defaults
+     * SLS 2: filtering and query matching
+     * SLS 3: nullable sort keys, direction, and stable tie-breaking
+     * SLS 4: page bounds and iterative slice
+     * SLS 5: result metadata
+   - Include a test ID, requirement/SLS, inputs, expected result, rationale, and priority for each case.
+
+3. COLLECTING TESTS FROM MULTIPLE AIs
+   I will give this same task to multiple AI systems. For each test you propose, include:
+   - AI/model name (leave as “not provided” if unknown)
+   - Test ID
+   - Requirement/SLS
+   - Inputs
+   - Expected result
+   - Rationale
+   - Confidence (high/medium/low)
+   - Whether it is new, a duplicate, or a variation of another test
+
+   Keep each AI’s original test list intact, then create a consolidated list. When combining lists, preserve the source AI names and IDs, merge only genuinely equivalent tests, and record disagreements instead of silently choosing a result.
+
+4. TEST ORGANIZATION AND REPORTING
+   - Output the roadmap first.
+   - Then provide the consolidated test cases in a table, grouped by SLS.
+   - Add a coverage matrix showing which SLS and edge-case categories are covered.
+   - Separate “proposed tests” from “tests actually executed.” Leave execution status as “not run” unless I provide results.
+   - End with open questions and the next recommended actions.
+
+If the attached materials do not contain enough information to define a test’s expected result, mark it “needs clarification” and explain what is missing rather than guessing.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+----------------------------------------------------------------------------------------------
+
+
+laude Sonnet 5.5. Test IDs are prefixed `CS5-`. Nothing below has been executed, so every test is **not run**.
+
+**Before you use this list:** I read `paginateRecords.js` and the existing `-copilot-test.js` as well as the `.md` contract. That makes this a "code + SLS" condition, which `STUDY-GUIDE.md` §5 says to record. I derived expected values from the contract first. Where the contract is silent I marked them **NC** (needs clarification) and noted what the code appears to do, from reading it, not from running it.
+
+# 1. Roadmap
+
+**Topic and scope (from `STUDY-GUIDE.md`).** The thesis asks whether giving an LLM **Strategic Locational Sections (SLS)** maps of a method improves the behavioral quality of generated tests, compared with giving source code alone. The corpus is 40 hand-authored JavaScript methods (20 at the root, 20 in `copiiot-codes-1/`). `paginateRecords` is one of the second 20. The guide calls this a pilot corpus, not a validated benchmark. Its recorded baseline is 167 tests in 40 files, 92.50% branch and 98.25% line coverage. I did not rerun this.
+
+| Phase | Tasks | Deliverables | Depends on | Done when |
+|---|---|---|---|---|
+| 0. Freeze question and outcomes | Pick one primary outcome (branch coverage, mutation score, behavioral correctness, or a predeclared combination). Decide whether Group D is included. | Written research question and outcome list | None | Primary outcome named; secondaries listed |
+| 1. Contract audit and oracles | Write preconditions, result shapes, boundaries and error behavior per method. Have a second person review. Build oracles separate from the prompts. | Per-method contract plus oracle set (for `paginateRecords`, see section 2) | 0 | Reviewer signs off; ambiguities resolved or logged |
+| 2. Corpus review | Define "executable LOC" (the 45-line check was physical lines). Document selection criteria. | Corpus selection note, corpus version/hash | 1 | Criteria written; corpus frozen |
+| 3. Protocol pilot | Run each group's prompt on a small preselected subset. Fix confusing instructions and scoring ambiguities. | Frozen prompts for Groups A–D (and the exact prompt skeleton) | 2 | No protocol changes after the pilot |
+| 4. Generation runs | Run multiple independent generations per method and group, with fixed settings and a predeclared N. | Raw outputs, logs, model/version/date | 3 | N runs per cell complete |
+| 5. Evaluation | Compute branch coverage, mutation score, a failure taxonomy (syntax, import, runtime, timeout, wrong assertion), reviewer scores, and cost. | Per-run results table | 4 | All runs scored |
+| 6. Analysis | Use method/run as the unit, report distributions and uncertainty, and give per-method results. | Analysis scripts and figures | 5 | Results reproducible from scripts |
+| 7. Writing | Write up threats to validity (small, synthetic corpus; SLS may leak test targets). | Thesis chapters | 6 | Draft reviewed |
+
+Completed so far, per the guide: Vitest and coverage setup, both 20-method corpora, and a baseline run. Phases 0–7 are all still to do.
+
+**Decisions and information I need from you:**
+1. The primary outcome and the number of generation runs.
+2. Which models and versions are in scope.
+3. Whether this multi-AI prompt is a study arm or just a way to build the oracle. It differs from the guide's prompt skeleton: it asks for a test table, not runnable Vitest code. The `.md` contract line ("clamp to 100, one-based, stable ties") also gives away behavior to whoever sees it.
+4. The public API and result shape of `paginateRecords`. The `.md` names none of the option names (`query`, `field`, `sortBy`, `descending`) or result fields (`items`, `page`, `pageSize`, `total`, `pages`). They appear only in the code and the existing test.
+
+# 2. Test plan: `paginateRecords`
+
+**Fixtures.** `R(k)` is `k` records `{id:1}…{id:k}`. Every test is new, since this is the first list. **Pri** is H/M/L and **Conf** is my confidence in the expected value. **NC** marks expected values the contract does not settle.
+
+### SLS 1: invalid collection and page/page-size defaults
+
+| ID | Inputs | Expected | Rationale | Pri | Conf |
+|---|---|---|---|---|---|
+| CS5-1.01 | `records` ∈ {null, undefined, `{}`, "abc", 42, Map, array-like `{length:1,0:{}}`}; page 3, size 5 | `{items:[],page:1,pageSize:0,total:0,pages:0}`. NC: shape comes from code and the existing test. | Guard for non-arrays | H | M |
+| CS5-1.02 | `[]`, all defaults | `items:[]`, `total:0`, `pages:0`, `page:1`, `pageSize:10` | A valid empty collection is distinct from an invalid one | H | M |
+| CS5-1.03 | `R(25)`, no page args | page 1, pageSize 10, ids 1–10, total 25, pages 3 | Defaults (10 comes from the signature; confirm) | H | M |
+| CS5-1.04 | `R(25)`, size 10, page ∈ {0, −1, 1.5, NaN, null, Infinity} | page 1, ids 1–10 | One-based pages; invalid falls back to the default. NC for the string "2" (coerce or default). | H | M |
+| CS5-1.05 | `R(25)`, page 1, size ∈ {0, −5, 2.5, NaN, null, "5"} | pageSize 10 | Invalid size falls back to the default | H | M |
+| CS5-1.06 | `R(150)`, size ∈ {100, 101, 1000, MAX_SAFE_INTEGER} | pageSize 100 for all four | Explicit clamp rule | H | H |
+| CS5-1.07 | `R(150)`, size = Infinity | NC: code gives 10 (not an integer). "Clamp to 100" suggests 100. | Clamp vs default conflict | L | L |
+| CS5-1.08 | `R(150)`, size ∈ {1, 99} | pageSize unchanged | Boundary just inside valid | M | H |
+| CS5-1.09 | options omitted, `undefined`, `{}` | No filtering or sorting, input order | Optional options | M | H |
+| CS5-1.10 | options = `null` | NC: code appears to throw TypeError. The contract is silent. | Invalid options | M | L |
+| CS5-1.11 | Snapshot of `records`, call with query and sort, compare after | Input array and records unchanged | Non-mutation (not in contract; reasonable invariant) | M | M |
+
+### SLS 2: filtering and query matching
+
+| ID | Inputs | Expected | Rationale | Pri | Conf |
+|---|---|---|---|---|---|
+| CS5-2.01 | `[null, undefined, 1, "s", true, {id:1}, ()=>{}]` | `total:1`, items `[{id:1}]` | Contract: skip non-object records | H | H |
+| CS5-2.02 | `[null,{id:1},null,{id:2}]`, size 1, page 2 | items `[{id:2}]`, total 2, pages 2 | Skipped entries take no page slots | H | H |
+| CS5-2.03 | Elements that are arrays, Dates or Maps | NC: code treats them as object records. | "Non-object" is ambiguous | L | L |
+| CS5-2.04 | No query, 3 records | All 3, input order | Search is optional | M | H |
+| CS5-2.05 | `query:""` | No filtering | Empty query | M | M |
+| CS5-2.06 | `query` ∈ {123, null, `{}`}, or `field` ∈ {5, null} | NC: code ignores a non-string query; a non-string `field` falls back to all-values search. | Option validation | L | L |
+| CS5-2.07 | `field:'name'`, `query:'ali'`, names Alice, bob, ALICIA | `[Alice, ALICIA]` | Case-insensitive substring. The code comment says so; the contract says only "search". | H | M |
+| CS5-2.08 | Same data, queries 'ice' and 'cia' | Both match (mid-string and suffix) | Substring, not prefix | M | M |
+| CS5-2.09 | `field:'name'`, query 'a'; some records lack `name` | Those records excluded; with no query they are included | Missing field | H | M |
+| CS5-2.10 | `field` value null or undefined; queries 'null', 'undefined' | Not matched | Nullish is not the text "null" | M | M |
+| CS5-2.11 | `{n:123}` query '12'; `{ok:true}` query 'tru' | NC: code coerces to String and matches. | Non-string values | L | L |
+| CS5-2.12 | No `field`; `{a:'x',b:'needle'}`, `{a:'x',b:'y'}`; query 'needle' | Only the first | NC: contract does not say all fields are searched. | M | M |
+| CS5-2.13 | No `field`; `{a:'foo',b:'bar'}` query 'foo bar'; `{a:{b:'x'}}` query 'object' | NC: code appears to match both (values joined with a space; "[object Object]"). Likely unintended. | Candidate defect | M | L |
+| CS5-2.14 | Query `' '` and `' ali '` on `field:'name'` | NC: code does not trim. | Whitespace | L | L |
+| CS5-2.15 | Query 'é' vs data 'É'; 'ß' | NC | Unicode case mapping | L | L |
+| CS5-2.16 | Query matches nothing | `items:[]`, `total:0`, `pages:0` | Empty result | M | H |
+
+### SLS 3: nullable sort keys, direction, stable ties
+
+Option names `sortBy` and `descending` come from the code.
+
+| ID | Inputs | Expected | Rationale | Pri | Conf |
+|---|---|---|---|---|---|
+| CS5-3.01 | keys [3,1,2], `sortBy:'k'` | 1,2,3 | Ascending default | H | H |
+| CS5-3.02 | Same, `descending:true` | 3,2,1 | Direction | H | H |
+| CS5-3.03 | `descending` ∈ {1, 'yes'} vs {0, '', undefined} | NC: code uses truthiness. | Non-boolean flag | L | L |
+| CS5-3.04 | Strings ['b','a','C'] | NC: code-unit order gives C, a, b; a case-insensitive or locale order gives a, b, C. | String comparison rule | M | L |
+| CS5-3.05 | `{id:a,k:1},{id:b,k:1},{id:c,k:0}`, ascending | c, a, b | Stable ties | H | H |
+| CS5-3.06 | `{a,k:1},{b,k:1},{c,k:0}`, descending | a, b, c (ties not reversed) | Ties keep input order in both directions | H | M |
+| CS5-3.07 | 30 records, 3 distinct keys cycling, both directions | Within each key, ids stay in input order | Stability beyond small arrays | H | H |
+| CS5-3.08 | `[{k:2},{k:null},{k:1},{},{k:undefined}]`, ascending | NC: placement is unspecified. Code puts 1, 2, then nullish in input order. | Nullable keys | H | M |
+| CS5-3.09 | Same data, descending | NC: code keeps nullish last, not first. | Nullish placement vs direction | H | L |
+| CS5-3.10 | `[{id:1,k:null},{id:2},{id:3,k:undefined}]` | Stable expectation: ids 1, 2, 3. NC: the code's `a===b` check does not treat null and undefined as equal, so order may break (read, not run). | Candidate defect | M | M |
+| CS5-3.11 | All keys nullish | Input order | Degenerate case | M | H |
+| CS5-3.12 | `[{k:0},{k:-1},{k:null},{k:1}]` | −1, 0, 1, null | 0, '' and false are real values | H | H |
+| CS5-3.13 | Keys containing NaN | NC | NaN is not equal to itself | L | L |
+| CS5-3.14 | Mixed numbers and strings | NC | Mixed types | L | L |
+| CS5-3.15 | Two equal `new Date(0)` keys plus an earlier Date | Earlier first; equal ones in input order. Candidate defect: `===` on separate Date objects is false. | Equal non-primitive keys | M | M |
+| CS5-3.16 | `sortBy` ∈ {undefined, 5, null}, or a key absent on every record | Input order, no throw | Sorting is optional | M | M |
+| CS5-3.17 | `descending:true`, no `sortBy` | NC: code does nothing (not reversed). | Direction without a key | L | L |
+| CS5-3.18 | Query + sort, read all pages | Concatenated pages equal the full sorted filtered list, no duplicates or gaps | Filter, then sort, then slice | H | H |
+
+### SLS 4: page bounds and iterative slice
+
+| ID | Inputs | Expected | Rationale | Pri | Conf |
+|---|---|---|---|---|---|
+| CS5-4.01 | `R(25)`, size 10, pages 1, 2, 3 | ids 1–10, 11–20, 21–25 | Normal and partial last page | H | H |
+| CS5-4.02 | `R(20)`, size 10, page 2 | ids 11–20, pages 2 | Exact multiple | H | H |
+| CS5-4.03 | `R(3)`, size 50 | 3 items, pages 1 | Size larger than total | M | H |
+| CS5-4.04 | `R(25)`, size 10, page ∈ {4, 99} | NC: code returns `items:[]` and echoes the requested page. Alternatives are to clamp to the last page or normalize. | The contract says nothing about out-of-range pages | H | L |
+| CS5-4.05 | `[]`, page 1 | `items:[]`, `pages:0` | Empty | M | M |
+| CS5-4.06 | `R(250)`, size 150, page 3 | pageSize 100, 50 items (ids 201–250) | Clamp meets slice | H | H |
+| CS5-4.07 | `R(100)` and `R(101)`, size 100 | pages 1; and pages 2 with 1 item on page 2 | Boundary at the clamp | M | H |
+| CS5-4.08 | `R(5)`, size 1 | 5 pages, one item each | Smallest page | M | H |
+| CS5-4.09 | `R(5)`, page ∈ {MAX_SAFE_INTEGER, 2^53} | No throw or hang; `items:[]` | Robustness | M | M |
+| CS5-4.10 | Mutate the returned `items` array | Input unchanged; records are the same object references (shallow). NC: the code comment says "copy". | Copy semantics | L | L |
+| CS5-4.11 | Randomized inputs | `items.length` ≤ pageSize always; union of all pages = filtered, sorted list | Property check | M | H |
+
+### SLS 5: result metadata
+
+| ID | Inputs | Expected | Rationale | Pri | Conf |
+|---|---|---|---|---|---|
+| CS5-5.01 | `R(25)`, 1, 10 | `{items, page:1, pageSize:10, total:25, pages:3}` | Field set (NC: names come from code) | H | M |
+| CS5-5.02 | `[null,{},{}]`; and a query that narrows | `total` 2; then the filtered count | `total` counts passing object records, not raw length | H | H |
+| CS5-5.03 | Totals 20, 21, 1, 0 with size 10 | pages 2, 3, 1, and 0. NC: pages for an empty result. | `ceil(total/size)` | M | M |
+| CS5-5.04 | Sizes −1 and 1000 | pageSize 10 and 100 | Metadata shows the effective size | H | H |
+| CS5-5.05 | page 0 | page 1. NC: the beyond-range page (see 4.04). | Metadata shows the effective page | M | M |
+| CS5-5.06 | Any valid call | `items.length == max(0, min(size, total−(page−1)·size))`; `pages·size ≥ total` | Invariants | M | H |
+| CS5-5.07 | Invalid collection vs `[]` | NC: pageSize is 0 vs 10. The code comment claims consistent metadata. | Possible inconsistency | M | L |
+| CS5-5.08 | Normal call, strict equality | Exactly the five keys | No extra fields | L | M |
+| CS5-5.09 | Query 'zzz' | `items:[]`, `total:0`, `pages:0`, `page:1`, `pageSize:10` | Metadata on a filtered-empty result | M | M |
+
+# 3. Consolidation
+
+I'm the only source so far, so the consolidated list equals the one above. When you add other AIs' lists, I'll keep their IDs and names, merge only genuinely equivalent tests, and record disagreements. The ones I expect to differ are **CS5-3.08/3.09** (null placement), **3.06** (tie order under descending), **4.04** (out-of-range page), **5.03** (`pages` for an empty result) and **2.12** (search all fields).
+
+# 4. Coverage matrix
+
+| | Normal | Boundary | Invalid input | Edge | Property/invariant |
+|---|---|---|---|---|---|
+| SLS 1 | 1.02, 1.03 | 1.06, 1.08 | 1.01, 1.04, 1.05, 1.10 | 1.07, 1.09 | 1.11 |
+| SLS 2 | 2.04, 2.07 | 2.02, 2.16 | 2.01, 2.06 | 2.09–2.15 | n/a |
+| SLS 3 | 3.01, 3.02 | 3.11 | 3.16 | 3.03–3.15, 3.17 | 3.07, 3.18 |
+| SLS 4 | 4.01 | 4.02, 4.03, 4.07, 4.08 | 4.04, 4.09 | 4.05, 4.06, 4.10 | 4.11 |
+| SLS 5 | 5.01, 5.02 | 5.03 | 5.04, 5.05 | 5.07–5.09 | 5.06 |
+
+Cross-cutting categories: stability (3.05–3.07, 3.10, 3.15), nullish handling (2.10, 3.08–3.12), type coercion (2.11, 3.03, 3.14), immutability (1.11, 4.10), robustness (4.09, 1.10).
+
+# 5. Proposed vs executed
+
+All 56 tests are **proposed**; execution status is **not run**.
+
+# 6. Open questions and next actions
+
+1. **Confirm the public API** (option and result field names) and write it into the contract. Right now it exists only in code.
+2. **Decide the NC items**, starting with 3.08/3.09, 4.04, 5.03 and 5.07.
+3. **Resolve or rerun the candidate defects** (2.13, 3.10, 3.15, 1.10, 5.07). I found them by reading the source only. Run them against the implementation before treating them as defects, but keep that separate from the independent oracle.
+4. **Existing tests look thin on SLS 3.** The "filters and sorts" test filters down to one record, so it doesn't exercise sorting. There is no descending, tie, or null-versus-undefined case. This is also from reading, not from a run.
+5. Send me the other AIs' lists and I'll consolidate them. I can also turn this into a CSV or Vitest file if you want.

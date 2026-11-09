@@ -1,0 +1,899 @@
+I'll go through all 40 functions in order, starting by extracting the sources with line numbers.
+
+Now the 20 functions in `copiiot-codes-1/`.
+
+I analyzed all 40 functions from the zip, in the order they appear there: 20 top-level, then the 20 in `copiiot-codes-1/`. Each has 3–4 locations ranked from highest to lowest sensitivity, and line numbers are those of the `.js` file.
+
+The `.js` files carry `// SLS n` comments, and `executeWorkflowTransition.md` contains a reference list of them, which I opened while checking what the `.md` files hold. I ranked on fault propagation, not on those labels, and I didn't open the other `.md` files. If you compare model output against those SLS lists, treat my ranking of that first function with care, and be aware the comments are visible to any model you feed the `.js` files.
+
+---
+
+## Top-level functions
+
+### 1. executeWorkflowTransition
+
+**#1 · L34–35, L41–43: guard evaluation and target selection**
+- *Why sensitive:* This decides which target is chosen, so its result goes straight into `nextState`.
+- *Fault:* Negate the guard (`!candidate.guard(...)`), or change `!candidate.guard` to `candidate.guard`.
+- *Impact:* The wrong branch wins, so `nextState` differs, or a valid transition returns `BLOCKED`.
+
+**#2 · L54: target-exists check**
+- *Why sensitive:* It is the last gate before `TRANSITIONED`.
+- *Fault:* Drop the negation or the whole check.
+- *Impact:* Either every valid transition returns `FATAL`, or a transition to a nonexistent state returns `TRANSITIONED`.
+
+**#3 · L38–40: guard exception handler**
+- *Why sensitive:* It is the only place errors are turned into a status.
+- *Fault:* Replace the `return` with `continue`.
+- *Impact:* `GUARD_EXCEPTION` disappears and a later fallback transition fires silently.
+
+**#4 · L49: `!resolvedTarget` → BLOCKED**
+- *Why sensitive:* It separates "no guard passed" from success.
+- *Fault:* Remove the check.
+- *Impact:* `workflow.states[null]` fails, so `BLOCKED` becomes `FATAL` with the message "does not exist: null".
+
+### 2. matchHttpRoute
+
+**#1 · L20–26: exact → param → wildcard priority**
+- *Why sensitive:* The order determines which node is reached.
+- *Fault:* Check `paramChild` before the exact child.
+- *Impact:* `/users/me` resolves to the `:id` handler with `params.id='me'`.
+
+**#2 · L38–47: method lookup and ALL fallback**
+- *Why sensitive:* It decides between a handler, a catch-all and an error object.
+- *Fault:* Remove the `!` in L38, or drop the `isCatchAll` flag.
+- *Impact:* Valid methods return `METHOD_NOT_ALLOWED`, or the flag is wrong.
+
+**#3 · L28: wildcard capture `slice(depth)`**
+- *Why sensitive:* It builds `params.wildcard` directly.
+- *Fault:* Use `slice(depth + 1)`.
+- *Impact:* The first wildcard segment is lost from `params.wildcard`.
+
+**#4 · L8: root path normalization**
+- *Why sensitive:* It controls how `/` is matched.
+- *Fault:* Use `[]` instead of `['']`.
+- *Impact:* The `''` child is never consulted, so root routes return `null` or the wrong handler.
+
+### 3. multiplySparseMatrices
+
+**#1 · L32: join key `bLookup.get(a.c)`**
+- *Why sensitive:* It pairs A's column with B's row, the core of matrix multiplication.
+- *Fault:* Use `a.r`.
+- *Impact:* Every product pairs the wrong entries, so the whole result is wrong.
+
+**#2 · L43–50: accumulate and cancel-to-zero**
+- *Why sensitive:* It builds each output cell, and the delete is what keeps the output sparse.
+- *Fault:* Replace `+` with `-`, or change `=== 0` to `!== 0`.
+- *Impact:* Wrong values, or explicit `v:0` entries that inflate `nonZeroCount`.
+
+**#3 · L10: dimension check**
+- *Why sensitive:* It gates the whole computation.
+- *Fault:* Change `c1 !== r2` to `c1 > r2`.
+- *Impact:* Mismatched shapes are multiplied instead of returning `DIMENSION_MISMATCH`.
+
+**#4 · L18, L29: bounds filters (`>= r2`, `>= c1`)**
+- *Why sensitive:* They exclude out-of-range entries.
+- *Fault:* Use `>`.
+- *Impact:* Out-of-bounds entries leak into the result, with coordinates beyond the declared dimensions.
+
+### 4. parseIndentedList
+
+**#1 · L33: stack unwind `level >= currentLevel`**
+- *Why sensitive:* It selects each node's parent.
+- *Fault:* Use `>`.
+- *Impact:* Siblings nest under each other, so the tree shape is wrong.
+
+**#2 · L29: level computation `floor(spaces / tabSize)`**
+- *Why sensitive:* It determines depth.
+- *Fault:* Use `ceil` or `*`.
+- *Impact:* Odd indents land at the wrong depth.
+
+**#3 · L22: bullet detection**
+- *Why sensitive:* It decides which lines become nodes.
+- *Fault:* Drop the `'* '` branch, or change `&&` to `||` in the negated test.
+- *Impact:* Star bullets vanish, or plain lines become nodes.
+
+**#4 · L27: empty-text skip**
+- *Why sensitive:* It prevents empty nodes.
+- *Fault:* Remove the check.
+- *Impact:* `- ` lines produce nodes with empty text.
+
+### 5. resolveCssCascade
+
+**#1 · L44–48: sort comparator**
+- *Why sensitive:* The sort order is the cascade, because later rules overwrite earlier ones.
+- *Fault:* Flip `r1.important ? 1 : -1` or `r1.specificity - r2.specificity`.
+- *Impact:* Lower-specificity or non-`!important` rules win in `computedStyles`.
+
+**#2 · L24–33: token matching**
+- *Why sensitive:* It decides whether a rule applies at all.
+- *Fault:* Remove `.toLowerCase()` at L32, or invert one `!==`.
+- *Impact:* Rules are missed or wrongly applied, so `appliedRulesCount` is wrong.
+
+**#3 · L38: specificity weights**
+- *Why sensitive:* It drives the ordering.
+- *Fault:* Use `a*10 + b*10 + c`.
+- *Impact:* An ID selector ties with a class selector, so declaration order wins instead.
+
+**#4 · L52: null/undefined filter**
+- *Why sensitive:* It protects earlier values from being overwritten.
+- *Fault:* Remove the filter.
+- *Impact:* `"null"` or `"undefined"` strings overwrite valid styles.
+
+### 6. resolveDependencyPipeline
+
+**#1 · L22–23: edge direction and in-degree**
+- *Why sensitive:* It builds the graph that Kahn's algorithm runs on.
+- *Fault:* Use `graph.get(t.id).push(dep)`, or increment the dependency's in-degree instead of the task's.
+- *Impact:* The order is reversed or wrong.
+
+**#2 · L54: `remaining === 0`**
+- *Why sensitive:* It is the enqueue condition.
+- *Fault:* Use `<= 0` or `=== 1`.
+- *Impact:* Nodes are enqueued early or never, giving a wrong order or a false cycle.
+
+**#3 · L61: `sorted.length !== allNodes.size`**
+- *Why sensitive:* It is the only cycle detector.
+- *Fault:* Use `<` or `===`.
+- *Impact:* Cycles are reported as success, or valid graphs fail.
+
+**#4 · L42: `iterations > maxIterations`**
+- *Why sensitive:* It is a boundary on the iteration limit.
+- *Fault:* Use `>=`.
+- *Impact:* A graph with exactly `maxIterations` nodes fails with `MAX_ITERATIONS_EXCEEDED`.
+
+### 7. schedulePriorityIntervals
+
+**#1 · L31: `current.start >= lastEndTime`**
+- *Why sensitive:* It is the half-open boundary for back-to-back intervals.
+- *Fault:* Use `>`.
+- *Impact:* Touching intervals are classed as `OVERLAP`, so they are dropped and `totalCoverage` falls.
+
+**#2 · L39, L43: preemption condition and `lastEndTime` recompute**
+- *Why sensitive:* It decides who is evicted and what the next boundary is.
+- *Fault:* Use `>= active.priority * 1.5`, or remove the `Math.max` recompute.
+- *Impact:* A wrong preempt decision, or a stale `lastEndTime` that lets overlapping items in.
+
+**#3 · L19: comparator `a.end - b.end || b.priority - a.priority`**
+- *Why sensitive:* It drives the greedy selection.
+- *Fault:* Swap the priority operands.
+- *Impact:* Lower-priority intervals are chosen first on ties.
+
+**#4 · L12: window containment**
+- *Why sensitive:* It decides which intervals enter the pipeline.
+- *Fault:* Use `>`/`<`.
+- *Impact:* Intervals touching the window edge are wrongly excluded.
+
+### 8. unpackVarintStream
+
+**#1 · L31: continuation bit `(byte & 0x80) === 0`**
+- *Why sensitive:* It terminates each varint.
+- *Fault:* Invert the test.
+- *Impact:* Single-byte values are never terminated, giving `UNTERMINATED_SEQUENCE` or merged values.
+
+**#2 · L27–28: payload mask and shift**
+- *Why sensitive:* It computes every decoded value.
+- *Fault:* Use `0x7e`, `|=` → `+=`, or shift by 8.
+- *Impact:* Every multi-byte value is wrong.
+
+**#3 · L38: overflow guard `shift > 35`**
+- *Why sensitive:* It is a boundary on varint length.
+- *Fault:* Use `>= 35` or `> 28`.
+- *Impact:* The accept/reject outcome for 5- and 6-byte varints changes. Note that the current `> 35` lets a 6th byte through at shift 35, which JS wraps to `<< 3`. That looks like a latent defect.
+
+**#4 · L44: truncation check**
+- *Why sensitive:* It separates a complete value from an incomplete one.
+- *Fault:* Remove it.
+- *Impact:* A partial value is pushed at L48 instead of returning an error.
+
+### 9. verifyAccessAuthorization
+
+**#1 · L47–50, L57–59: DENY precedence**
+- *Why sensitive:* It is the safety-critical decision.
+- *Fault:* Remove the `break`, or reorder so ALLOW is checked before DENY.
+- *Impact:* A denied request returns `authorized: true` and `PERMITTED`.
+
+**#2 · L22–26: action and resource scoping**
+- *Why sensitive:* It limits which policies apply.
+- *Fault:* Change `||` to `&&` in L22, or drop the L26 `continue`.
+- *Impact:* Policies leak across resource types, so over-permission or wrong denials.
+
+**#3 · L40–42: condition `catch` branch**
+- *Why sensitive:* It is the failure default for ABAC conditions.
+- *Fault:* Set `conditionPassed = true`.
+- *Impact:* A failing condition fails open.
+
+**#4 · L29–33: subject matching**
+- *Why sensitive:* It decides who a policy applies to.
+- *Fault:* Change `||` to `&&`.
+- *Impact:* Role- and ID-based policies stop matching, giving `DEFAULT_DENY`.
+
+### 10. applyPatchOperations
+
+**#1 · L25: traversal bound `segments.length - 1`**
+- *Why sensitive:* It stops traversal before the leaf.
+- *Fault:* Use `segments.length`.
+- *Impact:* The cursor walks into the leaf, so the patch is written at the wrong depth or fails.
+
+**#2 · L47–49: add/replace write and counter**
+- *Why sensitive:* It is the only mutation point for add and replace.
+- *Fault:* Drop the assignment or the `appliedCount++`.
+- *Impact:* The target is unchanged, or the `applied` count is wrong.
+
+**#3 · L7: deep clone**
+- *Why sensitive:* It protects the input object.
+- *Fault:* Use `const target = baseObject`.
+- *Impact:* The caller's input is mutated, which is a state-level divergence.
+
+**#4 · L53: array remove bound `idx < cursor.length`**
+- *Why sensitive:* It is a boundary check on removal.
+- *Fault:* Use `<=`.
+- *Impact:* An out-of-range remove counts as applied.
+
+### 11. assignPartitionsToNodes
+
+**#1 · L51–62: ring binary search and wraparound**
+- *Why sensitive:* It picks the owner node for every key.
+- *Fault:* Use `>` instead of `>=`, or flip the branch update.
+- *Impact:* Keys whose hash equals a vnode hash move to a different node, or the wrong slot is chosen.
+
+**#2 · L29: ring sort comparator**
+- *Why sensitive:* The binary search requires ascending order.
+- *Fault:* Use `b.hash - a.hash`.
+- *Impact:* The search misroutes most keys.
+
+**#3 · L12–14: hash function**
+- *Why sensitive:* Ring and keys share it, so any change reshuffles the whole mapping.
+- *Fault:* Use `<< 4` or remove `Math.abs`.
+- *Impact:* The `mapping` differs for essentially all keys.
+
+**#4 · L6: vnode clamp**
+- *Why sensitive:* It sets how many ring entries each node gets.
+- *Fault:* Use `Math.min(rf, 100)` or drop `Math.max(1, …)`.
+- *Impact:* The distribution shifts, and with 0 vnodes the ring is empty.
+
+### 12. auditTransactionLedger
+
+**#1 · L35, L46: balance arithmetic**
+- *Why sensitive:* It computes `endingBalance` directly.
+- *Fault:* Swap `+=` and `-=`.
+- *Impact:* Wrong balance, and the overdraft logic also misfires.
+
+**#2 · L41–43: overdraft boundary**
+- *Why sensitive:* It decides whether a debit can proceed.
+- *Fault:* Use `<= 0`.
+- *Impact:* Spending the exact balance is flagged `OVERDRAFT`, or `INSUFFICIENT_FUNDS` fires in strict mode.
+
+**#3 · L23–26, L52: dedupe and ledger registration**
+- *Why sensitive:* It controls duplicate detection and `processedCount`.
+- *Fault:* Skip `ledgerMap.set`, or invert `has`.
+- *Impact:* Duplicates pass undetected, or `processedCount` is wrong.
+
+**#4 · L56: `isHealthy`**
+- *Why sensitive:* It sets the final `valid` flag.
+- *Fault:* Use `||` or drop the `flagged.length` term.
+- *Impact:* A ledger with anomalies is reported `valid: true`.
+
+### 13. calculateDecayedEma
+
+**#1 · L44–45: decay formula**
+- *Why sensitive:* It produces every EMA value.
+- *Fault:* Swap `decayFactor` and `1 - decayFactor`, or drop `LN2`.
+- *Impact:* All EMA values after the first are wrong.
+
+**#2 · L39, L52: gap reset and `interpolated` flag**
+- *Why sensitive:* It decides reset versus smoothing.
+- *Fault:* Use `>=` for `delta > maxGapMs`.
+- *Impact:* The reset fires at the exact gap, so `ema` and the flag differ.
+
+**#3 · L32–36: out-of-order handling**
+- *Why sensitive:* It filters timestamps.
+- *Fault:* Use `delta <= 0`.
+- *Impact:* Equal-timestamp points are dropped, or `rejectUnordered` throws on them.
+
+**#4 · L9: `maxGapMs` default**
+- *Why sensitive:* It sets the reset threshold.
+- *Fault:* Use `halfLifeMs * 1`.
+- *Impact:* Resets fire far too often.
+
+### 14. calculateNetPayable
+
+**#1 · L50–54: tax brackets**
+- *Why sensitive:* The rate jumps discontinuously at these boundaries.
+- *Fault:* Use `>= 1000` or `<= 50`, or `??` → `||` at L51.
+- *Impact:* Exactly 1000 or 50 gets a different `tax` and `net`.
+
+**#2 · L29–41, L44: tier rates and customer discount**
+- *Why sensitive:* They scale the whole payable amount.
+- *Fault:* Swap the GOLD and PLATINUM rates, or use `+` instead of `(1 - rate)`.
+- *Impact:* `net` and `discount` are wrong.
+
+**#3 · L18–24: category discounts**
+- *Why sensitive:* They set the per-line discounted total.
+- *Fault:* Use `qty > 3`, or change 0.5 to 0.05.
+- *Impact:* A promo of exactly 3 gets no discount.
+
+**#4 · L46: `totalSavings`**
+- *Why sensitive:* It is the reported `discount`.
+- *Fault:* Use `postDiscount - gross`.
+- *Impact:* `discount` goes negative.
+
+### 15. calculateSlidingWindowMaxima
+
+**#1 · L32–33: eviction `deque[0] < left`**
+- *Why sensitive:* It keeps stale indices out of the window.
+- *Fault:* Use `<=`.
+- *Impact:* The in-window maximum is evicted, so a smaller value is reported.
+
+**#2 · L37–44: window-full test and slide**
+- *Why sensitive:* It controls when results are emitted.
+- *Fault:* Use `>= k`, or drop `left++`.
+- *Impact:* The result count is wrong, or the left bound never advances.
+
+**#3 · L40, L51: threshold and null→0**
+- *Why sensitive:* It decides the emitted value.
+- *Fault:* Use `>=`, or map null to `undefined`.
+- *Impact:* A max equal to the threshold flips between its value and `0`.
+
+**#4 · L26: `<=` in the pop loop**
+- *Why sensitive:* Low. `<=` vs `<` mostly changes only which duplicate index is retained, so the mutant is likely equivalent or masked.
+- *Fault:* Use `<`.
+- *Impact:* Usually none. It only shows up when a duplicate's expiry timing changes the result.
+
+### 16. decodeCompressedStream
+
+**#1 · L24–28: run-length count parsing**
+- *Why sensitive:* It gives the repeat count for every character.
+- *Fault:* Use `charCodeAt >= 49`, or default the count to `0` instead of `1`.
+- *Impact:* Counts are mis-parsed, or characters without a count vanish.
+
+**#2 · L37–43: overflow boundary**
+- *Why sensitive:* It truncates output at `maxBytes`.
+- *Fault:* Use `>=`, or drop the partial `allowedSlice` write.
+- *Impact:* `decoded` and `crc` differ, and `overflow` is wrong at the exact limit.
+
+**#3 · L55: CRC formula**
+- *Why sensitive:* It computes `crc`.
+- *Fault:* Use `k` instead of `k + 1`, or `% 65536`.
+- *Impact:* `crc` changes for nearly every non-trivial input.
+
+**#4 · L31–34: control character skip**
+- *Why sensitive:* It filters the output.
+- *Fault:* Remove `!allowControlChars`.
+- *Impact:* Control characters are always dropped or always kept.
+
+### 17. deduplicateRecords
+
+**#1 · L34–57: strategy dispatch**
+- *Why sensitive:* It decides which record survives a duplicate.
+- *Fault:* Swap the `KEEP_LAST` and default branches.
+- *Impact:* The wrong record or merged fields appear in `output`.
+
+**#2 · L24–26: first-seen registration**
+- *Why sensitive:* It records which output slot each key owns.
+- *Fault:* Register `output.length + 1`.
+- *Impact:* Later merges overwrite the wrong record.
+
+**#3 · L17–20: keyless handling**
+- *Why sensitive:* It controls whether items without a key survive.
+- *Fault:* Drop the `allowKeyless` condition.
+- *Impact:* Keyless items are always dropped or always kept.
+
+**#4 · L44–48: deep-combine rules**
+- *Why sensitive:* They set the merged field values.
+- *Fault:* Remove the `Set` dedupe, or ignore `sumNumbers`.
+- *Impact:* Duplicate array elements, or numbers overwritten instead of summed.
+
+### 18. evaluateQueryPredicate
+
+**#1 · L9–12, L17–20: AND/OR short-circuit**
+- *Why sensitive:* It is the logical core.
+- *Fault:* Remove the `!` at L10, or `return false` → `true` at L20.
+- *Impact:* Compound predicates evaluate to the wrong boolean.
+
+**#2 · L23–24: NOT**
+- *Why sensitive:* It inverts the result.
+- *Fault:* Drop the `!`.
+- *Impact:* NOT predicates behave as identity.
+
+**#3 · L40, L42: GT/LT strictness**
+- *Why sensitive:* It is a numeric boundary.
+- *Fault:* Use `>=` or `<=`.
+- *Impact:* A record equal to the value is wrongly matched.
+
+**#4 · L47–48: LIKE regex translation**
+- *Why sensitive:* It builds the match pattern.
+- *Fault:* Drop `^`/`$`, or swap `%` and `_`.
+- *Impact:* Substring matches or wrong wildcard semantics.
+
+### 19. evaluateResourceBurst
+
+**#1 · L46–48: acceptance condition**
+- *Why sensitive:* It is the gate that consumes tokens.
+- *Fault:* Use `>` instead of `>=`.
+- *Impact:* A request that exactly equals the remaining tokens is rejected, and `remainingBalances` differs.
+
+**#2 · L39–42: leak/refill**
+- *Why sensitive:* It computes how many tokens come back.
+- *Fault:* Drop `Math.min(maxCapacity, …)`, or use `windowMs * maxCapacity`.
+- *Impact:* Tokens overflow past capacity, or refill at the wrong rate.
+
+**#3 · L31–33: bucket initialization**
+- *Why sensitive:* It sets the starting tokens and timestamp.
+- *Fault:* Start with `tokens: 0`.
+- *Impact:* The first request is rejected. Also, `req.timestamp || Date.now()` treats `0` as missing, which is inconsistent with L36.
+
+**#4 · L24–28: capacity validation**
+- *Why sensitive:* It decides whether a request type is permitted.
+- *Fault:* Use `< 0`.
+- *Impact:* A zero-capacity type is accepted.
+
+### 20. evaluateSemVerRequirement
+
+**#1 · L16–18: `compare`**
+- *Why sensitive:* Every operator depends on it.
+- *Fault:* Flip `1 : -1` at one level.
+- *Impact:* Matches invert at that component, in all branches.
+
+**#2 · L34–35: caret rule**
+- *Why sensitive:* It encodes `^` semantics.
+- *Fault:* Change `||` to `&&`, or drop the major-match check.
+- *Impact:* `^1.2.3` matches `2.0.0`, or `^0.x` ranges loosen.
+
+**#3 · L38, L45: `>=` and `>` boundaries**
+- *Why sensitive:* They decide equal-version matches.
+- *Fault:* Swap `>= 0` and `> 0`.
+- *Impact:* The version equal to the bound is wrongly accepted or rejected.
+
+**#4 · L7–9, L46–48: parsing and fallthrough**
+- *Why sensitive:* Prefix stripping feeds every comparison, and unsupported ranges fall to exact match.
+- *Fault:* Change the stripped prefix characters, or `some(isNaN)` → `every`.
+- *Impact:* Malformed versions parse as valid. Also note `<` and `~` ranges fall to the exact-equality branch.
+
+---
+
+## `copiiot-codes-1/`
+
+### 21. aggregateSalesByRegion
+
+**#1 · L28: `amount < minimum` and region allow-list**
+- *Why sensitive:* It decides inclusion, so it drives `accepted`, `rejected` and totals.
+- *Fault:* Use `<=`, or drop `!allowed.has`.
+- *Impact:* Boundary sales are excluded, or out-of-scope regions are counted.
+
+**#2 · L34–36: accumulation**
+- *Why sensitive:* It produces each regional total.
+- *Fault:* Use `= amount` instead of `+ amount`.
+- *Impact:* Only the last sale per region survives.
+
+**#3 · L44–47: rounding and `grandTotal`**
+- *Why sensitive:* `grandTotal` sums unrounded totals and then rounds once.
+- *Fault:* Round per-region and then sum, or drop `* 100 / 100`.
+- *Impact:* The cent-level `grandTotal` or per-region values differ.
+
+**#4 · L22–24: region and amount validation**
+- *Why sensitive:* It decides rejection.
+- *Fault:* Remove `.trim()`, or drop `Number.isFinite`.
+- *Impact:* `" EU"` and `"EU"` split, or `Infinity` poisons totals.
+
+### 22. allocateBudget
+
+**#1 · L34–41: largest-remainder distribution**
+- *Why sensitive:* It decides which items get the leftover cents.
+- *Fault:* Flip to `a.remainder - b.remainder`, or drop the index tie-break.
+- *Impact:* The wrong items receive extra cents.
+
+**#2 · L27–28: floor share**
+- *Why sensitive:* It sets the base allocation.
+- *Fault:* Use `Math.round`.
+- *Impact:* `assigned` can exceed the total, `remaining` goes negative, and the sum is over-allocated.
+
+**#3 · L13–18: validity and weight total**
+- *Why sensitive:* It sets the denominator for every share.
+- *Fault:* Skip the `weight <= 0` check, or `weightTotal += 0`.
+- *Impact:* Shares are miscomputed, and `invalidCount` diverges.
+
+### 23. analyzeLogWindow
+
+**#1 · L49: bucket index**
+- *Why sensitive:* It places every in-window event.
+- *Fault:* Use `Math.ceil`, or compute from `timestamp` instead of `timestamp - windowStart`.
+- *Impact:* Events shift buckets, and `start` and counts are wrong.
+
+**#2 · L40: window filter**
+- *Why sensitive:* It is a boundary at `windowStart`.
+- *Fault:* Use `<=`.
+- *Impact:* The event exactly at `windowStart` moves to `outsideWindowCount`.
+
+**#3 · L57: error classification**
+- *Why sensitive:* It counts errors.
+- *Fault:* Remove `toUpperCase()`, or use `startsWith`.
+- *Impact:* `errors` is undercounted or overcounted.
+
+**#4 · L19–20, L34–35: span and window anchor**
+- *Why sensitive:* They define the window.
+- *Fault:* Use `Math.min` for `maxTime`, or `windowStart = minTime`.
+- *Impact:* The wrong window is analyzed.
+
+### 24. buildDependencyLayers
+
+**#1 · L42: readiness test**
+- *Why sensitive:* It builds every layer.
+- *Fault:* Remove the `!`, or use `some`.
+- *Impact:* Layers are wrong or the result is a false `CYCLE_DETECTED`.
+
+**#2 · L26–29, L34: unknown dependencies**
+- *Why sensitive:* It controls early failure.
+- *Fault:* Drop the `unknown.add`, or the early return.
+- *Impact:* The `UNKNOWN_DEPENDENCY` error vanishes, and later code reads a missing key.
+
+**#3 · L11: invalid or duplicate ID detection**
+- *Why sensitive:* It controls registration.
+- *Fault:* Remove `seen.has`.
+- *Impact:* Duplicates overwrite each other, and `invalidCount` differs.
+
+**#4 · L44–47: cycle detection and layer ordering**
+- *Why sensitive:* It guards the loop and sets the order within layers.
+- *Fault:* Remove `ready.sort()`.
+- *Impact:* Layer order becomes nondeterministic, or the loop runs forever on cycles.
+
+### 25. calculateCapacityPlan
+
+**#1 · L27: event ordering `a.delta - b.delta`**
+- *Why sensitive:* It puts end events before start events at equal times.
+- *Fault:* Use `b.delta - a.delta`.
+- *Impact:* Back-to-back bookings count as overlapping, which inflates `peak` and produces false conflicts.
+
+**#2 · L41, L45: capacity comparisons**
+- *Why sensitive:* They decide conflicts.
+- *Fault:* Use `>=`.
+- *Impact:* Exact-capacity usage is flagged as a conflict, and `overCapacity` is wrong.
+
+**#3 · L19–21: window clipping**
+- *Why sensitive:* It trims bookings to the window.
+- *Fault:* Use `Math.min` for start and `Math.max` for end.
+- *Impact:* Intervals extend beyond the window, or are dropped.
+
+**#4 · L36–39: grouping same-time events**
+- *Why sensitive:* It makes the peak reflect the state after all events at a time.
+- *Fault:* Evaluate after each event.
+- *Impact:* Transient peaks appear that never exist.
+
+### 26. calculateInvoice
+
+**#1 · L38–41: customer discount and tax base**
+- *Why sensitive:* It is the monetary core.
+- *Fault:* Compute tax on `discounted`, or drop `Math.max(0, …)`.
+- *Impact:* `tax`, `total` and `discount` are wrong.
+
+**#2 · L22–26: line discount**
+- *Why sensitive:* It sets each line's discount before the customer rate.
+- *Fault:* Use `Math.min(lineRate, 0.25)` for CLEARANCE.
+- *Impact:* CLEARANCE items get less than the 25% floor.
+
+**#3 · L4–5: rate clamping**
+- *Why sensitive:* It protects against invalid rates.
+- *Fault:* Remove the clamp.
+- *Impact:* A negative customer rate raises the total, and a rate above 1 produces negatives.
+
+**#4 · L17–19: quantity normalization**
+- *Why sensitive:* It is the subtotal multiplier.
+- *Fault:* Default quantity to `0`, or use `>= 0`.
+- *Impact:* Lines contribute nothing, and `subtotal` is wrong.
+
+### 27. compareSnapshots
+
+**#1 · L35–40: key presence**
+- *Why sensitive:* It emits additions and removals.
+- *Fault:* Use `&&`.
+- *Impact:* Added or removed keys are missed.
+
+**#2 · L10: `Object.is` equality**
+- *Why sensitive:* It decides whether to descend.
+- *Fault:* Use `===`.
+- *Impact:* `NaN` vs `NaN` is reported as a change, and `0` vs `-0` is hidden.
+
+**#3 · L13: container mismatch**
+- *Why sensitive:* It handles type changes.
+- *Fault:* Remove the `Array.isArray` comparison.
+- *Impact:* An array↔object change is recursed into instead of reported.
+
+**#4 · L34, L45: path format and ordering**
+- *Why sensitive:* They shape the output.
+- *Fault:* Use `.` for arrays, or drop the sort.
+- *Impact:* Path strings or order differ.
+
+### 28. computeHistogram
+
+**#1 · L28: `value < boundaries[middle + 1]`**
+- *Why sensitive:* It places every value, and the half-open rule is decided here.
+- *Fault:* Use `<=`.
+- *Impact:* Values on a boundary land in the previous bin.
+
+**#2 · L18, L31: upper-edge inclusion and clamp**
+- *Why sensitive:* They handle the last edge.
+- *Fault:* Use `>=` at L18, or drop `Math.min`.
+- *Impact:* The last-edge value is ignored, or increments `counts[len]` and is silently lost.
+
+**#3 · L7–8: strictly increasing check**
+- *Why sensitive:* It validates the boundaries.
+- *Fault:* Use `<`.
+- *Impact:* Duplicate boundaries pass, giving zero-width bins instead of `INVALID_BOUNDARIES`.
+
+**#4 · L38, L41: `includesEnd` and `included`**
+- *Why sensitive:* They are reported metadata.
+- *Fault:* Use `index === 0`.
+- *Impact:* The wrong bin is flagged.
+
+### 29. estimateShipping
+
+**#1 · L35–37: volumetric and billable weight**
+- *Why sensitive:* It drives every quote.
+- *Fault:* Use `Math.min`, or `*` instead of `/ divisor`.
+- *Impact:* `billableWeight` and `cost` are wrong.
+
+**#2 · L38, L26: `maxWeight` and country filters**
+- *Why sensitive:* They exclude services.
+- *Fault:* Use `>=` at L38, or drop `includes`.
+- *Impact:* Services are wrongly dropped at the exact limit, or wrongly offered.
+
+**#3 · L39–40: surcharge and cost formula**
+- *Why sensitive:* It computes each quote's price.
+- *Fault:* Drop `destination.remote`, or omit `perKgRate`.
+- *Impact:* `cost` is wrong.
+
+**#4 · L12–14, L45: package validation and sort**
+- *Why sensitive:* They affect the inputs and the order.
+- *Fault:* Use `< 0`, or flip the comparator.
+- *Impact:* Zero-weight packages are accepted, or the quote order is wrong.
+
+### 30. findLongestIncreasingRun
+
+**#1 · L24: `current <= previous`**
+- *Why sensitive:* It defines "strictly increasing".
+- *Fault:* Use `<`.
+- *Impact:* Equal neighbors extend runs, so `start`, `end` and `length` are wrong.
+
+**#2 · L29: `currentLength > bestLength`**
+- *Why sensitive:* It is the tie-break.
+- *Fault:* Use `>=`.
+- *Impact:* The last of equal-length runs is returned instead of the first.
+
+**#3 · L16–19: non-finite reset**
+- *Why sensitive:* It breaks runs at invalid values.
+- *Fault:* Remove `runStart = -1`.
+- *Impact:* Runs bridge across non-numeric values.
+
+**#4 · L47: end index**
+- *Why sensitive:* It reports the boundary.
+- *Fault:* Use `endExclusive` instead of `endExclusive - 1`.
+- *Impact:* `end` is off by one.
+
+### 31. findShortestPath
+
+**#1 · L33–37: relaxation**
+- *Why sensitive:* It computes distances and predecessors.
+- *Fault:* Use `<=`, or `-` instead of `+`.
+- *Impact:* The `path` or `distance` differs, with different tie-break routes or wrong distances.
+
+**#2 · L31: edge-weight validation**
+- *Why sensitive:* It filters edges.
+- *Fault:* Use `<= 0`.
+- *Impact:* Zero-weight edges are ignored, giving a longer path or `UNREACHABLE`.
+
+**#3 · L18, L24: selection and early exit**
+- *Why sensitive:* They drive Dijkstra's order.
+- *Fault:* Use `>` instead of `<`, or drop `current === goal`.
+- *Impact:* Wrong node selection gives wrong distances, though removing the early exit alone is mostly masked.
+
+**#4 · L43, L48–52: reachability and path reconstruction**
+- *Why sensitive:* They build the returned path.
+- *Fault:* Remove the `cursor === start` break, or skip `reverse()`.
+- *Impact:* The `path` is reversed or too long.
+
+### 32. flattenTree
+
+**#1 · L30: `frame.depth < depthLimit`**
+- *Why sensitive:* It is a boundary on `maxDepth`.
+- *Fault:* Use `<=`.
+- *Impact:* One extra level of nodes is emitted.
+
+**#2 · L18, L33: visited checks**
+- *Why sensitive:* They provide dedupe and cycle protection.
+- *Fault:* Remove them.
+- *Impact:* Shared nodes are emitted twice, and cyclic input loops forever.
+
+**#3 · L10, L31: reverse-order pushing**
+- *Why sensitive:* It preserves preorder.
+- *Fault:* Iterate forward.
+- *Impact:* Siblings and roots come out in reversed order.
+
+**#4 · L36–38: `parentId` and `path`**
+- *Why sensitive:* They are reported metadata.
+- *Fault:* Use `parentId: frame.parentId`, or `childIndex + 1`.
+- *Impact:* `parentId` and `path` values are wrong.
+
+### 33. mergeSortedEventStreams
+
+**#1 · L25: `event.timestamp < selectedEvent.timestamp`**
+- *Why sensitive:* It is the tie-break between streams.
+- *Fault:* Use `<=`.
+- *Impact:* On equal timestamps the later stream wins, so `sourceIndex` order changes.
+
+**#2 · L32–34: termination and `skippedInvalid`**
+- *Why sensitive:* It decides when merging stops.
+- *Fault:* Change `continue` to `break`.
+- *Impact:* Remaining valid events are lost when invalid events end a pass.
+
+**#3 · L19–23: invalid event skip**
+- *Why sensitive:* It advances past bad events.
+- *Fault:* Drop `cursors[streamIndex]++`.
+- *Impact:* An infinite loop, or `invalidCount` is wrong.
+
+**#4 · L36–37: emit and advance**
+- *Why sensitive:* It builds the output.
+- *Fault:* Omit `sourceIndex`, or the cursor increment.
+- *Impact:* The events are wrong, or duplicated forever.
+
+### 34. normalizePhoneNumber
+
+**#1 · L29–32: length logic**
+- *Why sensitive:* It gates validity and country-code insertion.
+- *Fault:* Use `< 11`, or `>= 15`.
+- *Impact:* The accept/reject boundary moves, and a wrong `+` number is produced.
+
+**#2 · L16–17: leading-zero handling**
+- *Why sensitive:* It rewrites the digits.
+- *Fault:* Slice 1 instead of 2, or drop `length === 11`.
+- *Impact:* The `number` changes.
+
+**#3 · L6–8: extension regex and split**
+- *Why sensitive:* It separates the extension from the number.
+- *Fault:* Drop the `$` anchor, or `slice(0, index + 1)`.
+- *Impact:* The `extension` or the number's digits are wrong.
+
+**#4 · L24–26, L38–42: zero checks**
+- *Why sensitive:* L24–26 catches all-zero input. L38–42 is largely redundant, since a non-zero digit is already guaranteed by L24.
+- *Fault:* Remove the L24 check.
+- *Impact:* `INVALID_NUMBER` is not returned. Mutations at L38–42 alone are likely equivalent and masked.
+
+### 35. paginateRecords
+
+**#1 · L39: `start = (safePage - 1) * safeSize`**
+- *Why sensitive:* It sets the page offset.
+- *Fault:* Use `safePage * safeSize`.
+- *Impact:* Every page is shifted by one, and the first page is skipped.
+
+**#2 · L42: `cursor < Math.min(total, start + safeSize)`**
+- *Why sensitive:* It bounds the slice.
+- *Fault:* Use `<=`.
+- *Impact:* An extra item, or a crash when `filtered[cursor]` is undefined.
+
+**#3 · L38: `pages = Math.ceil(total / safeSize)`**
+- *Why sensitive:* It is reported metadata.
+- *Fault:* Use `Math.floor`.
+- *Impact:* `pages` is one short for partial pages.
+
+**#4 · L14–19: query filter**
+- *Why sensitive:* It selects records.
+- *Fault:* Drop `toLowerCase`, or use `startsWith`.
+- *Impact:* The match set and `total` change.
+
+**#5 · L4, L29–33: size clamp and stable sort**
+- *Why sensitive:* They set page size and order.
+- *Fault:* Use `Math.min(pageSize, 101)`, or flip `direction`.
+- *Impact:* A wrong `pageSize`, or reversed or unstable ordering.
+
+### 36. parseCsvRows
+
+**#1 · L17–22: quote state machine**
+- *Why sensitive:* It handles escaped quotes and closing quotes.
+- *Fault:* Drop `cursor++` after the `""` unescape.
+- *Impact:* The field text duplicates or swallows quotes.
+
+**#2 · L36–40: newline handling**
+- *Why sensitive:* It splits rows.
+- *Fault:* Drop the `\r\n` pair `cursor++`.
+- *Impact:* CRLF input produces blank rows.
+
+**#3 · L49: end-of-input flush**
+- *Why sensitive:* It decides whether the last field and row are emitted.
+- *Fault:* Drop `row.length > 0`, or the `endsWith(delimiter)` term.
+- *Impact:* The final row or a trailing empty field is lost.
+
+**#4 · L31, L33: quote-start and delimiter detection**
+- *Why sensitive:* They detect structure.
+- *Fault:* Remove `field.length === 0`.
+- *Impact:* Mid-field quotes toggle quoting, and fields split wrongly.
+
+### 37. planRetries
+
+**#1 · L22–25: exponential growth and cap**
+- *Why sensitive:* It gives every delay's nominal value.
+- *Fault:* Use `attempt` instead of `2 ** attempt`, or `>=` in the cap test.
+- *Impact:* Wrong delays, with a different cap boundary.
+
+**#2 · L28–31: LCG and jitter multiplier**
+- *Why sensitive:* It makes the sequence deterministic for a given seed.
+- *Fault:* Change a constant, or use `1 + safeJitter` in the multiplier.
+- *Impact:* Every jittered delay changes.
+
+**#3 · L11, L13: attempts cap and zero-max shortcut**
+- *Why sensitive:* They bound the output.
+- *Fault:* Use `Math.min(attempts, 21)`, or remove L13.
+- *Impact:* The array length differs, or zero-max returns nonzero values.
+
+**#4 · L34–36, L42–44: rounding and clamps**
+- *Why sensitive:* L34–36 clamps the delay at generation. L42–44 is a redundant second clamp, so mutants there are mostly equivalent.
+- *Fault:* Use `Math.floor`, or drop the `> maxDelayMs` clamp.
+- *Impact:* Delays shift by 1 or exceed the max. The L42–44 loop would catch the latter, which masks that mutation.
+
+### 38. reconcileInventory
+
+**#1 · L37–38: change detection and delta**
+- *Why sensitive:* It produces every reported change.
+- *Fault:* Use `===`, or `delta: previous - current`.
+- *Impact:* Unchanged SKUs are reported, or the delta has the wrong sign.
+
+**#2 · L35–36: missing-SKU defaults**
+- *Why sensitive:* They handle added and removed SKUs.
+- *Fault:* Drop `|| 0`.
+- *Impact:* `NaN` appears in `delta`, or the change is dropped.
+
+**#3 · L18–22: duplicate SKU aggregation**
+- *Why sensitive:* It combines quantities.
+- *Fault:* Use `set(item.quantity)` instead of the sum.
+- *Impact:* Only the last duplicate's quantity counts.
+
+**#4 · L14, L44: validation and `valid` flag**
+- *Why sensitive:* They govern accounting.
+- *Fault:* Remove `Number.isFinite`, or use `invalidCount <= 0`.
+- *Impact:* `NaN` quantities pass, or `valid` is wrong.
+
+### 39. topKFrequentWords
+
+**#1 · L30–33: ranking comparator**
+- *Why sensitive:* It sets the order of the output.
+- *Fault:* Flip `right.count - left.count`, or drop the alphabetical tie-break.
+- *Impact:* Rank order is reversed or unstable.
+
+**#2 · L38: `cursor < k`**
+- *Why sensitive:* It bounds the result length.
+- *Fault:* Use `<=`.
+- *Impact:* `k + 1` entries are returned.
+
+**#3 · L14: tokenization regex**
+- *Why sensitive:* It defines what a word is.
+- *Fault:* Remove `'` or the `u` flag.
+- *Impact:* Contractions split, and Unicode words fail.
+
+**#4 · L20–21: stop words and token length**
+- *Why sensitive:* They filter the counts.
+- *Fault:* Use `>=`, or remove `toLowerCase`.
+- *Impact:* Words at the exact limit are dropped, or stop-word matching is case-sensitive.
+
+### 40. validateForm
+
+**#1 · L24–28: required and empty-value handling**
+- *Why sensitive:* It splits required from optional fields.
+- *Fault:* Drop the `=== ''` term, or remove the optional-empty skip at L28.
+- *Impact:* Empty required fields pass, or empty optional fields get `MIN`/`PATTERN` errors.
+
+**#2 · L40–41: min/max boundaries**
+- *Why sensitive:* They are boundary checks on length and value.
+- *Fault:* Use `<=` or `>=`.
+- *Impact:* Values exactly at the limit are wrongly rejected.
+
+**#3 · L29–36: type checks**
+- *Why sensitive:* They gate the later constraints.
+- *Fault:* Drop `Number.isFinite`, or compare `typeof value === 'number'`.
+- *Impact:* `NaN` and `Infinity`, or numeric strings, pass.
+
+**#4 · L52: `UNKNOWN_FIELD`**
+- *Why sensitive:* It rejects extra values.
+- *Fault:* Remove the `!`.
+- *Impact:* Extra fields are accepted, and declared fields are reported unknown.
+
+---
+
+A few functions have lines where a mutation is likely masked: `calculateSlidingWindowMaxima` L26, `normalizePhoneNumber` L38–42 and `planRetries` L42–44. I put those last in their lists and said so, because they are useful as negative controls when you evaluate whether a model separates sensitive from absorbed locations.

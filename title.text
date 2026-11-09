@@ -1,0 +1,51 @@
+### Persian (ترجمه فارسی)
+
+«سلام.
+ان‌شاءالله که سلامت باشید. عرض کنم یک مقدار سرم شلوغ شد و اصلاً نتوانستم جلسه‌ای بگذارم، اما عرض کنم که...
+
+من چند تا موضوع و پروپوزال در ذهنم است؛ آن‌ها را بگویم، اگر پسندیدید در همان جهت جلو برویم و اگر نپسندیدید، نظر خودتان را به من بگویید.
+
+اینکه ما با LLMها چطور می‌توانیم تست یک نرم‌افزار را بهبود (improve) بدهیم.
+
+برای شروع این کار، باید چند سورس‌کد پیدا کنید؛ در هر زبانی که باشد—جاوااسکریپت، پایتون، جاوا یا سی‌شارپ—فقط سمت بک‌اند باشد.
+
+مثلاً ۲۰ تا، ۳۰ تا... البته باید بیشتر باشد، مثلاً ۱۰۰ تا، ولی فعلاً ما با ۲۰ تا شروع کنیم که بتوانید پیدا کنید. کدهایی که دستتان هست یا متدها؛ متدهایی مثلاً ۳۰ تا ۴۰ خط که داخلشان `if`، `for`، `while` و این دست ساختارها باشد. متدهای ۲–۳ خطی نباشد. مثلاً ورودی‌های مختلف و متفاوتی هم داشته باشند.
+
+عرض کنم که... بعداً بیاییم قسمت‌های حساس (sensitive parts) آن‌ها را پیدا کنیم. قسمت‌های حساس چه چیزهایی می‌توانند باشند؟ جاهایی که اگر باگی رخ دهد، خروجی تغییر کند. وقتی در جاهای مختلف برنامه باگ ایجاد شود، ممکن است تأثیرش دیده نشود؛ اما اگر در بعضی قسمت‌ها باگی بخورد یا باگی داشته باشد، می‌تواند مستقیماً روی خروجی اثر بگذارد. به این چه می‌گوییم؟ به این می‌گوییم موقعیت استراتژیک باگ یا موقعیت حساس باگ (Strategic / Sensitive Location of Bug).
+
+این را به‌صورت الگوریتمی نمی‌شود پیدا کرد. انسان حتی در کدی که خودش نوشته هم برایش سخت است تشخیص دهد که کجای برنامه از نظر خطا حساس‌تر است.
+
+ما می‌خواهیم ببینیم آیا LLMها—مثلاً BERT، LLaMA، DeepSeek، GPT—می‌توانند از این منظر برنامه را تحلیل کنند و آن قسمت‌های حساس را به ما بگویند یا نه؟ این مرحله اول است.
+
+در مرحله دوم، بعداً بیاییم تست‌هایی تولید کنیم که بتوانند آن نقاط حساس را پوشش دهند.
+
+پس شما در مرحله اول، در جاوااسکریپت، پایتون، جاوا یا سی‌شارپ، ۲۰ تا متد پیدا کنید. بعد از اینکه این‌ها را آماده کردید، ۳ یا ۴ تا LLM—می‌تواند محلی (local) باشد یا سراسری (global)—را پرامپت می‌کنیم تا این نقاط استراتژیک را پیدا کنند.
+
+و در مرحله بعد می‌آییم برای آن‌ها تست تولید می‌کنیم. ولی اول—یعنی کلاً ۳ مرحله گفتم—مرحله اولمان چیست؟ پیدا کردن برنامه‌ها. این‌ها را آماده کنید و به من خبر بدهید تا کار زیاد به تأخیر نیفتد.»
+
+---
+
+### English Translation
+
+"Hello.
+I hope you are doing well. To be honest, I got quite busy and couldn't schedule a meeting at all, but let me share...
+
+I have a few topics and proposals in mind. Let me share them; if you like them, we can proceed along that route, and if not, feel free to give me your own ideas.
+
+The main idea is: how can we use LLMs to improve software testing?
+
+To get started on this, you need to find some source code files; in any language—JavaScript, Python, Java, or C#—as long as it's backend-oriented.
+
+For example, 20 or 30 functions/methods... Of course, it should ideally be more, around 100, but for now let's start with 20 so it's manageable for you to find. Codes you have on hand or methods; methods around 30 to 40 lines of code containing logic like `if`, `for`, `while`, and so forth—not trivial 2–3 line methods. They can also take various different types of inputs.
+
+Moving on... next, we will identify their sensitive parts. What are sensitive parts? Areas where, if a bug occurs, the output will directly change. When a bug is injected into various random spots of a program, its effect might not even show up; but in certain critical spots, a bug will directly alter the output. What do we call this? We call it a strategic bug location or a sensitive bug location.
+
+You cannot easily find this algorithmically. Even a human analyzing code they wrote themselves would struggle to state definitively which exact spots are most sensitive to faults.
+
+We want to investigate whether LLMs—such as BERT, LLaMA, DeepSeek, GPT—are capable of analyzing code from this perspective and identifying those sensitive locations for us. That is phase one.
+
+In the second phase, we will subsequently generate test cases specifically aimed at covering those sensitive areas.
+
+So in the first phase: find 20 methods in JavaScript, Python, Java, or C#. Once you have prepared them, we will take 3 to 4 LLMs—whether local or cloud-based large models—and prompt them to locate these strategic points.
+
+Then in the next phase, we will generate tests for them. But first—I outlined 3 phases for you—what is our immediate first step? Finding the programs. Please get these ready and let me know so we don't delay the work too long."
